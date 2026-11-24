@@ -1,0 +1,1123 @@
+/**
+ * 地球物理通論：重力探勘與大地均衡 (黑板手寫互動腳本 V2.0)
+ * 100% 依課堂手寫原稿重構，修正圖表裁切與公式溢出
+ */
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize Math typesetting via KaTeX
+  initMathRendering();
+
+  // Navigation tab switcher
+  initNavigation();
+
+  // Draw static diagrams (Airy & Pratt sketches) with ample padding
+  drawAiryModelDiagram();
+  drawPrattModelDiagram();
+
+  // Ambient Chalk Dust Animation
+  initAmbientCanvas();
+
+  // Section 2: Taiwan Transect Interactive Slider (Re-scaled to prevent any clipping)
+  initTaiwanTransect();
+
+  // Section 4: Hand Derivation View Switcher & Stepper
+  initDerivationTabs();
+  initDerivationStepper();
+
+  // Section 5: Simulator A (Airy Isostasy) & Simulator B (Calculator)
+  initAirySimulator();
+  initGravityCalculator();
+
+  // Section 6: Interactive Chalkboard Quiz
+  initQuiz();
+
+  // Section 7: Copy Git Commands Button
+  initCopyButton();
+});
+
+/* ================= 1. MATH RENDERING HELPER ================= */
+function initMathRendering(element = document.body) {
+  if (typeof renderMathInElement === 'function') {
+    renderMathInElement(element, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+      ],
+      throwOnError: false
+    });
+  }
+}
+
+/* ================= 2. NAVIGATION ================= */
+function initNavigation() {
+  const navBtns = document.querySelectorAll('.nav-btn');
+  const sections = document.querySelectorAll('.content-section');
+  const contentTop = document.querySelector('.chalk-container');
+
+  navBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      navBtns.forEach(b => b.classList.remove('active'));
+      sections.forEach(s => s.classList.remove('active'));
+
+      btn.classList.add('active');
+      const targetId = btn.getAttribute('data-target');
+      const targetSec = document.getElementById(targetId);
+      if (targetSec) {
+        targetSec.classList.add('active');
+        // Redraw canvases when section becomes active to ensure correct dimensions
+        if (targetId === 'sec-isostasy') {
+          drawAiryModelDiagram();
+          drawPrattModelDiagram();
+        }
+        if (targetId === 'sec-taiwan') updateTaiwanTransect();
+        if (targetId === 'sec-lab') updateAirySim();
+        // Re-render math in that section
+        initMathRendering(targetSec);
+        // Bring the new page into view, just below the header
+        if (contentTop) {
+          const top = contentTop.getBoundingClientRect().top + window.scrollY - 18;
+          window.scrollTo({ top, behavior: 'smooth' });
+        }
+      }
+    });
+  });
+}
+
+/* ================= 3. AMBIENT CHALK DUST CANVAS ================= */
+function initAmbientCanvas() {
+  const canvas = document.getElementById('ambient-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  let width = canvas.width = window.innerWidth;
+  let height = canvas.height = window.innerHeight;
+
+  window.addEventListener('resize', () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  const particles = Array.from({ length: 45 }, () => ({
+    x: Math.random() * width,
+    y: Math.random() * height,
+    radius: Math.random() * 1.5 + 0.5,
+    alpha: Math.random() * 0.25 + 0.1,
+    vx: (Math.random() - 0.5) * 0.25,
+    vy: Math.random() * 0.3 + 0.1
+  }));
+
+  function animate() {
+    ctx.clearRect(0, 0, width, height);
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.y > height) { p.y = 0; p.x = Math.random() * width; }
+      if (p.x < 0) p.x = width;
+      if (p.x > width) p.x = 0;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(93, 74, 50, ${p.alpha})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(animate);
+  }
+  animate();
+}
+
+/* ================= 4. DIAGRAMS: AIRY & PRATT WITH AMPLE PADDING ================= */
+function drawAiryModelDiagram() {
+  const canvas = document.getElementById('airy-diagram');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background Mantle
+  ctx.fillStyle = '#f7efdf';
+  ctx.fillRect(0, 0, w, h);
+
+  const seaY = 70;
+  const normCrustY = 145;
+  const compY = 215;
+
+  // Sea level dashed line
+  ctx.strokeStyle = 'rgba(93, 74, 50, 0.42)';
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(15, seaY);
+  ctx.lineTo(w - 15, seaY);
+  ctx.stroke();
+
+  // Compensation depth dashed line
+  ctx.strokeStyle = '#a8641f';
+  ctx.beginPath();
+  ctx.moveTo(15, compY);
+  ctx.lineTo(w - 15, compY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Crust block with clear steps matching PDF slide 2
+  ctx.fillStyle = '#eadcc1';
+  ctx.strokeStyle = '#3f6c7d';
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  // Ocean bathymetry
+  ctx.moveTo(25, seaY + 22);
+  ctx.lineTo(115, seaY + 22);
+  // Plain
+  ctx.lineTo(115, seaY);
+  ctx.lineTo(195, seaY);
+  // Mountain h1
+  ctx.lineTo(195, seaY - 45);
+  ctx.lineTo(300, seaY - 45);
+  // Mountain h2
+  ctx.lineTo(300, seaY - 20);
+  ctx.lineTo(390, seaY - 20);
+  // Plain right
+  ctx.lineTo(390, seaY);
+  ctx.lineTo(495, seaY);
+  // Right normal Moho
+  ctx.lineTo(495, normCrustY);
+  // Root r2
+  ctx.lineTo(390, normCrustY);
+  ctx.lineTo(390, normCrustY + 26);
+  ctx.lineTo(300, normCrustY + 26);
+  // Root r1 (deep root)
+  ctx.lineTo(300, normCrustY + 55);
+  ctx.lineTo(195, normCrustY + 55);
+  // Plain Moho
+  ctx.lineTo(195, normCrustY);
+  ctx.lineTo(115, normCrustY);
+  // Ocean Anti-root
+  ctx.lineTo(115, normCrustY - 26);
+  ctx.lineTo(25, normCrustY - 26);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Ocean Water fill
+  ctx.fillStyle = 'rgba(63, 108, 125, 0.22)';
+  ctx.fillRect(25, seaY, 90, 22);
+
+  // Labels
+  ctx.fillStyle = '#4a3b2a';
+  ctx.font = 'bold 12px Kalam, LXGW WenKai TC, sans-serif';
+  ctx.fillText('ocean (d)', 40, seaY + 16);
+  ctx.fillText('sea-level', 125, seaY - 6);
+  ctx.fillText('mountain (h₁)', 210, seaY - 50);
+  ctx.fillText('h₂', 335, seaY - 25);
+
+  ctx.fillStyle = '#a8641f';
+  ctx.font = 'bold 15px Kalam, sans-serif';
+  ctx.fillText('crust (ρc)', 240, normCrustY - 15);
+
+  ctx.fillStyle = '#c17834';
+  ctx.font = 'bold 13px Kalam, sans-serif';
+  ctx.fillText('mantle (ρm)', 60, normCrustY + 35);
+  ctx.fillText('root r₁', 235, normCrustY + 45);
+  ctx.fillText('r₂', 335, normCrustY + 20);
+  ctx.fillText('anti-root r₀', 35, normCrustY - 8);
+
+  ctx.fillStyle = '#a8641f';
+  ctx.font = '12.5px Kalam, sans-serif';
+  ctx.fillText("C ────────────────── compensation depth ────────────────── C'", 40, compY + 16);
+}
+
+function drawPrattModelDiagram() {
+  const canvas = document.getElementById('pratt-diagram');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background Mantle
+  ctx.fillStyle = '#f7efdf';
+  ctx.fillRect(0, 0, w, h);
+
+  const seaY = 75;
+  const compY = 215;
+
+  // Sea level dashed line
+  ctx.strokeStyle = 'rgba(93, 74, 50, 0.42)';
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(15, seaY);
+  ctx.lineTo(w - 15, seaY);
+  ctx.stroke();
+
+  // Compensation depth dashed line
+  ctx.strokeStyle = '#a8641f';
+  ctx.beginPath();
+  ctx.moveTo(15, compY);
+  ctx.lineTo(w - 15, compY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Pratt Blocks: Each column has bottom at compY, different density & height!
+  const blocks = [
+    { x: 25, w: 85, top: seaY + 22, color: '#e2d1b2', density: 'ρ₀ > ρc', sub: '(海盆較重)', label: 'ocean (d)' },
+    { x: 110, w: 75, top: seaY, color: '#e9dcc3', density: 'ρc (正常)', sub: '', label: 'plain' },
+    { x: 185, w: 105, top: seaY - 50, color: '#e2d1b2', density: 'ρ₁ < ρc', sub: '(高山最輕)', label: 'mountain h₁' },
+    { x: 290, w: 95, top: seaY - 24, color: '#e9dcc3', density: 'ρ₂ < ρc', sub: '', label: 'mountain h₂' },
+    { x: 385, w: 100, top: seaY, color: '#e9dcc3', density: 'ρc', sub: '(正常地殼)', label: 'crust' }
+  ];
+
+  ctx.lineWidth = 1.5;
+  blocks.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.strokeStyle = '#c17834';
+    ctx.fillRect(b.x, b.top, b.w, compY - b.top);
+    ctx.strokeRect(b.x, b.top, b.w, compY - b.top);
+
+    // Labels inside block
+    ctx.fillStyle = '#4a3b2a';
+    ctx.font = 'bold 12px Kalam, LXGW WenKai TC, sans-serif';
+    ctx.fillText(b.label, b.x + 8, b.top - 8);
+
+    ctx.fillStyle = '#a8641f';
+    ctx.font = 'bold 13px Kalam, LXGW WenKai TC, sans-serif';
+    ctx.fillText(b.density, b.x + 12, (b.top + compY) / 2);
+    if (b.sub) {
+      ctx.fillStyle = '#8a755b';
+      ctx.font = '11px Kalam, LXGW WenKai TC, sans-serif';
+      ctx.fillText(b.sub, b.x + 12, (b.top + compY) / 2 + 16);
+    }
+  });
+
+  // Ocean Water overlay
+  ctx.fillStyle = 'rgba(63, 108, 125, 0.22)';
+  ctx.fillRect(25, seaY, 85, 22);
+
+  // Depth D indicator
+  ctx.fillStyle = '#c17834';
+  ctx.font = 'bold 12px Kalam, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('Depth D', 508, (seaY + compY) / 2);
+  ctx.textAlign = 'left';
+
+  ctx.fillStyle = '#a8641f';
+  ctx.font = '12.5px Kalam, sans-serif';
+  ctx.fillText("C ────────────── 均一補償深度基準面 (Depth = D) ────────────── C'", 30, compY + 16);
+}
+
+/* ================= 5. TAIWAN TRANSECT INTERACTIVE (FIXED CLIPPING) ================= */
+const taiwanTransectData = [
+  {
+    name: '海岸平原 (Coastal Plain, CP)',
+    fa: '+10 ~ +25 mgal',
+    ba: '-30 ~ -50 mgal',
+    moho: '約 30 km',
+    desc: '覆蓋深厚的新生代沖積層與沉積岩。布蓋異常為負值，反映向東傾斜的歐亞大陸邊緣地殼；自由空間異常接近 0，局部地表接近靜力平衡。'
+  },
+  {
+    name: '西部麓山帶 (Western Foothills, WF)',
+    fa: '+60 ~ +120 mgal',
+    ba: '-50 ~ -70 mgal',
+    moho: '約 32 ~ 35 km',
+    desc: '活躍的褶皺逆衝斷層帶（如車籠埔斷層）。受強烈板塊推擠，地層向上劇烈抬升與褶皺重疊，自由空間異常隨地形快速轉為顯著正值。'
+  },
+  {
+    name: '中央山脈脊樑 (Central Range, CR)',
+    fa: '+200 ~ +300 mgal (極高正區!)',
+    ba: '-20 ~ -40 mgal (負異常極小值不明顯)',
+    moho: '約 40 ~ 45 km (山根不足)',
+    desc: '★ 關鍵未均衡核心：近 4000 公尺高山，自由空間異常高達 +300 mgal！若達 Airy 均衡山根深度應達 50~60 km 且布蓋異常應達 -150 mgal 以下。實測山根厚度僅約 40 km，證明中央山脈是由板塊劇烈擠壓的「構造動力動態支撐 (Dynamic Support)」，屬於嚴重的補償不足 (Undercompensation)！'
+  },
+  {
+    name: '花東縱谷縫合帶 (Longitudinal Valley, LV)',
+    fa: '+40 ~ +80 mgal',
+    ba: '0 ~ +50 mgal (極陡梯度帶)',
+    moho: '約 35 km (地殼邊界劇變)',
+    desc: '歐亞板塊與菲律賓海板塊的碰撞縫合線。重力場在短短數十公里內產生極大水平梯度，布蓋異常由負值極速跳升為大正值。'
+  },
+  {
+    name: '海岸山脈與東部海域 (Coastal Range, CoR)',
+    fa: '+70 ~ +120 mgal',
+    ba: '+100 ~ +200 mgal (高正值)',
+    moho: '約 20 ~ 25 km (洋弧增生)',
+    desc: '菲律賓海板塊呂宋火山島弧北端之增生體。高密度的火山島弧安山岩以及東側較薄的洋殼與高密度地函上湧，使布蓋重力呈現大面積強烈正值。'
+  }
+];
+
+function initTaiwanTransect() {
+  const slider = document.getElementById('transect-slider');
+  if (!slider) return;
+
+  slider.addEventListener('input', () => {
+    updateTaiwanTransect();
+  });
+  updateTaiwanTransect();
+}
+
+function updateTaiwanTransect() {
+  const slider = document.getElementById('transect-slider');
+  const canvas = document.getElementById('taiwan-transect-canvas');
+  const info = document.getElementById('transect-info');
+  if (!slider || !canvas || !info) return;
+
+  const idx = parseInt(slider.value, 10);
+  const data = taiwanTransectData[idx];
+
+  // Update text label highlight
+  const labels = document.querySelectorAll('.transect-labels span');
+  labels.forEach((l, i) => {
+    l.className = (i === idx) ? 'active-label' : '';
+  });
+
+  // Update info panel
+  info.innerHTML = `
+    <h4 class="chalk-yellow font-kalam" style="font-size:1.3rem; margin-bottom:8px;">
+      📍 測站位置：${data.name}
+    </h4>
+    <div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:10px;">
+      <span style="background:rgba(180,67,58,0.09); padding:4px 10px; border-radius:4px; border-left:3px solid var(--chalk-red);">
+        <strong>自由空間異常 (ΔgF)：</strong> <span class="chalk-red">${data.fa}</span>
+      </span>
+      <span style="background:rgba(244,220,139,0.28); padding:4px 10px; border-radius:4px; border-left:3px solid var(--chalk-yellow);">
+        <strong>布蓋重力異常 (ΔgB)：</strong> <span class="chalk-yellow">${data.ba}</span>
+      </span>
+      <span style="background:rgba(63,108,125,0.09); padding:4px 10px; border-radius:4px; border-left:3px solid var(--chalk-cyan);">
+        <strong>莫氏面估算深度：</strong> <span class="chalk-cyan">${data.moho}</span>
+      </span>
+    </div>
+    <p style="font-size:14.5px; color:var(--chalk-white); line-height:1.6;">${data.desc}</p>
+  `;
+
+  // Draw Cross-Section on Canvas
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#fbf5e7';
+  ctx.fillRect(0, 0, w, h);
+
+  // ================= 1. GRAVITY PROFILE (y: 20 to 170) =================
+  // Scale mapping: +350 mgal -> y=30, 0 mgal -> y=125, -100 mgal -> y=155
+  function mgalToY(val) {
+    // 0 mgal is at y = 125. 1 mgal = 0.30 px
+    return 125 - val * 0.30;
+  }
+
+  // Grid lines: +300, +200, +100, 0, -100
+  const gridVals = [300, 200, 100, 0, -100];
+  ctx.lineWidth = 1;
+  gridVals.forEach(val => {
+    const gy = mgalToY(val);
+    ctx.strokeStyle = val === 0 ? 'rgba(93, 74, 50, 0.4)' : 'rgba(93, 74, 50, 0.12)';
+    ctx.setLineDash(val === 0 ? [4, 4] : [2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(65, gy);
+    ctx.lineTo(w - 25, gy);
+    ctx.stroke();
+
+    ctx.fillStyle = val === 0 ? '#a8641f' : '#8a755b';
+    ctx.font = '11px Fira Code';
+    ctx.fillText(`${val >= 0 ? '+' : ''}${val}`, 22, gy + 4);
+  });
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#8a755b';
+  ctx.font = '11px Kalam';
+  ctx.fillText('mgal', 20, 25);
+
+  // Curve points: CP, WF, CR, LV, CoR
+  const xCoords = [110, 250, 430, 570, 710];
+
+  // Free-air values (+20, +90, +280, +60, +95)
+  const faValues = [20, 90, 280, 60, 95];
+  // Bouguer values (-40, -65, -30, +25, +170)
+  const baValues = [-40, -65, -30, 25, 170];
+
+  // Draw Bouguer Curve (Yellow)
+  ctx.strokeStyle = '#a8641f';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  xCoords.forEach((x, i) => {
+    const y = mgalToY(baValues[i]);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Draw Free-Air Curve (Red)
+  ctx.strokeStyle = '#b4433a';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  xCoords.forEach((x, i) => {
+    const y = mgalToY(faValues[i]);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Legend at top
+  ctx.fillStyle = '#b4433a';
+  ctx.font = 'bold 12.5px Kalam';
+  ctx.fillText('── 自由空間異常 (ΔgF, 中央山脈高達 +280~300 mgal)', 80, 25);
+  ctx.fillStyle = '#a8641f';
+  ctx.fillText('── 布蓋異常 (ΔgB)', 460, 25);
+
+  // Section divider line
+  ctx.strokeStyle = 'rgba(93, 74, 50, 0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(30, 175);
+  ctx.lineTo(w - 20, 175);
+  ctx.stroke();
+
+  // ================= 2. GEOLOGY & MOHO (y: 185 to 370) =================
+  const seaLevelY = 215;
+
+  // Topography Line
+  ctx.fillStyle = '#e8d9bd';
+  ctx.strokeStyle = '#3f6c7d';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(50, seaLevelY);
+  ctx.lineTo(130, seaLevelY - 2);   // CP
+  ctx.lineTo(260, seaLevelY - 20);  // WF
+  ctx.lineTo(430, seaLevelY - 55);  // Central Range Peak
+  ctx.lineTo(560, seaLevelY - 8);   // LV
+  ctx.lineTo(680, seaLevelY - 24);  // CoR
+  ctx.lineTo(790, seaLevelY + 18);  // Sea
+  // Moho Bottom Line
+  ctx.lineTo(790, 275);            // Oceanic Moho
+  ctx.lineTo(660, 290);
+  ctx.lineTo(560, 315);            // Under LV
+  ctx.lineTo(430, 335);            // Under CR (~40-42km Moho)
+  ctx.lineTo(260, 305);
+  ctx.lineTo(50, 280);             // Continental Moho ~30km
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Moho line dashed highlight (Red)
+  ctx.strokeStyle = '#b4433a';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(50, 280);
+  ctx.lineTo(260, 305);
+  ctx.lineTo(430, 335);
+  ctx.lineTo(560, 315);
+  ctx.lineTo(660, 290);
+  ctx.lineTo(790, 275);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Geological Labels
+  ctx.fillStyle = '#a8641f';
+  ctx.font = 'bold 13px Kalam';
+  ctx.fillText('歐亞大陸地殼 (Eurasian Crust)', 120, 255);
+  
+  ctx.fillStyle = '#b4433a';
+  ctx.font = 'bold 12.5px Kalam';
+  ctx.fillText('莫氏面 Moho (~40-45 km, 山根深度不足)', 280, 355);
+
+  ctx.fillStyle = '#3f6c7d';
+  ctx.font = 'bold 13px Kalam';
+  ctx.fillText('菲律賓海板塊 (8.2 cm/yr 擠壓 ➔)', 560, 245);
+
+  // Station Column markers
+  ctx.fillStyle = '#8a755b';
+  ctx.font = 'bold 11px Kalam';
+  ctx.fillText('CP', 105, seaLevelY - 10);
+  ctx.fillText('WF', 245, seaLevelY - 28);
+  ctx.fillText('CR (中央山脈)', 395, seaLevelY - 62);
+  ctx.fillText('LV', 565, seaLevelY - 14);
+  ctx.fillText('CoR', 705, seaLevelY - 30);
+
+  // Active Pin indicator
+  const curX = xCoords[idx];
+  const curFaY = mgalToY(faValues[idx]);
+
+  ctx.fillStyle = '#a8641f';
+  ctx.beginPath();
+  ctx.arc(curX, curFaY, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Vertical guideline from curve down through geology
+  ctx.strokeStyle = 'rgba(168, 93, 43, 0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(curX, 35);
+  ctx.lineTo(curX, 365);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/* ================= 6. DERIVATION TABS & STEPPER (EXACT NOTEBOOK P.28) ================= */
+function initDerivationTabs() {
+  const tabNote = document.getElementById('tab-notebook-view');
+  const tabStep = document.getElementById('tab-stepper-view');
+  const tabScan = document.getElementById('tab-scan-view');
+  const fullNote = document.getElementById('full-notebook-container');
+  const stepper = document.getElementById('stepper-container');
+  const scan = document.getElementById('scan-container');
+
+  if (!tabNote || !tabStep || !fullNote || !stepper) return;
+
+  const setTab = (activeTab) => {
+    [tabNote, tabStep, tabScan].forEach(t => t && t.classList.toggle('active', t === activeTab));
+    fullNote.style.display = activeTab === tabNote ? 'block' : 'none';
+    stepper.style.display = activeTab === tabStep ? 'grid' : 'none';
+    if (scan) scan.style.display = activeTab === tabScan ? 'block' : 'none';
+
+    if (activeTab === tabNote) initMathRendering(fullNote);
+    if (activeTab === tabStep) renderDerivationStep();
+    if (activeTab === tabScan && scan) initMathRendering(scan);
+  };
+
+  tabNote.addEventListener('click', () => setTab(tabNote));
+  tabStep.addEventListener('click', () => setTab(tabStep));
+  if (tabScan) tabScan.addEventListener('click', () => setTab(tabScan));
+}
+
+const derivationSteps = [
+  {
+    step: 1,
+    title: '微元立方體體積與萬有引力微元 (直角座標)',
+    subtitle: '手寫筆記：微元當立方體算，dV = dx dy dz',
+    math: `$$dV = dx \\, dy \\, dz, \\qquad dm = \\rho \\, dV = \\rho \\, dx \\, dy \\, dz$$
+$$g = \\int \\frac{G \\rho \\, dV}{r^2} = \\int \\frac{G \\rho \\, dx \\, dy \\, dz}{r^2}$$`,
+    notes: '($G$: 萬有引力常數, $\\rho$: 密度, $r$: 某處微元到 $P$ 點的距離)。微元質量 $dm$ 對測站產生萬有引力。'
+  },
+  {
+    step: 2,
+    title: '轉為圓柱座標系 $(r, \\phi, z)$ 與垂直分量投影',
+    subtitle: '含有垂直、水平分量，重力只取垂直分量 ➔ 乘上 cosθ = z / s',
+    math: `$$\\text{在圓柱座標中：} \\quad dV = r \\, dr \\, d\\phi \\, dz, \\qquad dm = \\rho \\, r \\, dr \\, d\\phi \\, dz$$
+$$\\text{距離 } s = \\sqrt{r^2 + z^2}, \\quad \\cos\\theta = \\frac{z}{s} = \\frac{z}{\\sqrt{r^2 + z^2}}$$
+$$\\rightarrow dg_z = G \\rho \\left( \\frac{dV}{s^2} \\right) \\frac{z}{s} = \\frac{G \\rho z \\, dV}{s^3}$$
+$$s^3 = (r^2 + z^2)^{3/2} \\;\\Rightarrow\\; dg_z = \\frac{G \\rho z \\, r \\, dr \\, d\\phi \\, dz}{(r^2 + z^2)^{3/2}}$$`,
+    notes: '水平引力在對稱圓盤上相互抵消，因此重力儀量測到的向下引力只需取垂直分量 $\\cos\\theta = z/s$。'
+  },
+  {
+    step: 3,
+    title: '積到一個整個圓環 (方位角 $\\phi \\to 0 \\sim 2\\pi$)',
+    subtitle: '手寫筆記：圓環加總產生 2π 因子',
+    math: `$$\\int_0^{2\\pi} d\\phi = 2\\pi$$
+$$\\frac{G \\rho z \\, r \\, dr \\, dz}{(r^2 + z^2)^{3/2}} \\stackrel{\\text{積分}}{\\longrightarrow} \\frac{2\\pi G \\rho z \\, r \\, dr \\, dz}{(r^2 + z^2)^{3/2}}$$`,
+    notes: '由於被積函數與方位角 $\\phi$ 無關，方位角由 $0$ 到 $2\\pi$ 積分直接產出 $2\\pi$。'
+  },
+  {
+    step: 4,
+    title: '積到一個整個半徑 $R$ 的薄圓盤',
+    subtitle: '手寫筆記：利用定積分代換求得圓盤引力',
+    math: `$$\\int_0^R \\frac{r}{(r^2 + z^2)^{3/2}} dr = \\left[ -\\frac{1}{\\sqrt{r^2 + z^2}} \\right]_0^R = \\frac{1}{z} - \\frac{1}{\\sqrt{R^2 + z^2}}$$
+$$\\frac{2\\pi G \\rho z \\, r \\, dr \\, dz}{(r^2 + z^2)^{3/2}}
+\\;\\xrightarrow{\\;\\int_0^R dr\\;}\\;
+2\\pi G \\rho z \\left( \\frac{1}{z} - \\frac{1}{\\sqrt{R^2 + z^2}} \\right) dz = 2\\pi G \\rho \\left( 1 - \\frac{z}{\\sqrt{R^2 + z^2}} \\right) dz$$`,
+    notes: '由 $r=0$ 積至 $r=R$，$r\\,dr$ 在積分中被積掉，得到厚度為 $dz$、半徑為 $R$ 的均勻圓盤對測站的引力。'
+  },
+  {
+    step: 5,
+    title: '令圓柱半徑 $R \\to \\infty$，無限 Bouguer Plate',
+    subtitle: '手寫筆記：極限條件下薄片引力與距離 z 無關！',
+    math: `$$R \\to \\infty \\text{ 時， } \\frac{z}{\\sqrt{R^2 + z^2}} \\to 0$$
+$$2\\pi G \\rho \\left( 1 - \\frac{z}{\\sqrt{R^2 + z^2}} \\right) dz = 2\\pi G \\rho \\, dz$$`,
+    notes: '★ 手寫筆記的核心物理巧思：當平板向水平四周無限延伸時，厚度為 $dz$ 的薄板對上方測站的引力與測站距離 $z$ 無關！'
+  },
+  {
+    step: 6,
+    title: '從 $h_1$ 積到 $h_2$（把所有薄片加起來）',
+    subtitle: '手寫筆記藍色大方框：Δg_B = 2π G ρ h',
+    math: `$$\\Delta g_{\\text{plate}} = \\int_{h_1}^{h_2} 2\\pi G \\rho \\, dz = 2\\pi G \\rho (h_2 - h_1)$$
+$$\\text{如果頂面在 } 0 \\text{（在 } P \\text{ 點所在平面）：}$$
+$$\\mathbf{\\Delta g_B = 2\\pi G \\rho h}$$`,
+    notes: '證明完畢！若以一般地殼岩石密度 $\\rho = 2.67\\text{ g/cm}^3$ 代入，$\\Delta g_{\\text{BP}} \\approx 0.1119 h\\text{ mgal}$。'
+  }
+];
+
+let curDerivationStep = 1;
+
+function initDerivationStepper() {
+  const prevBtn = document.getElementById('prev-step-btn');
+  const nextBtn = document.getElementById('next-step-btn');
+  const navItems = document.querySelectorAll('.step-nav');
+
+  navItems.forEach(item => {
+    item.addEventListener('click', () => {
+      curDerivationStep = parseInt(item.getAttribute('data-step'), 10);
+      renderDerivationStep();
+    });
+  });
+
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => {
+      if (curDerivationStep > 1) {
+        curDerivationStep--;
+        renderDerivationStep();
+      }
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      if (curDerivationStep < derivationSteps.length) {
+        curDerivationStep++;
+        renderDerivationStep();
+      }
+    });
+  }
+
+  // Arrow-key navigation while the stepper is visible
+  document.addEventListener('keydown', (e) => {
+    const stepper = document.getElementById('stepper-container');
+    if (!stepper || stepper.style.display === 'none') return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.key === 'ArrowLeft' && curDerivationStep > 1) {
+      curDerivationStep--;
+      renderDerivationStep();
+    } else if (e.key === 'ArrowRight' && curDerivationStep < derivationSteps.length) {
+      curDerivationStep++;
+      renderDerivationStep();
+    }
+  });
+
+  renderDerivationStep();
+}
+
+function renderDerivationStep() {
+  const box = document.getElementById('step-content-box');
+  const indicator = document.getElementById('step-indicator');
+  const prevBtn = document.getElementById('prev-step-btn');
+  const nextBtn = document.getElementById('next-step-btn');
+  const navItems = document.querySelectorAll('.step-nav');
+
+  if (!box) return;
+
+  const stepData = derivationSteps[curDerivationStep - 1];
+
+  navItems.forEach(n => {
+    const s = parseInt(n.getAttribute('data-step'), 10);
+    n.classList.toggle('active', s === curDerivationStep);
+  });
+
+  if (prevBtn) prevBtn.disabled = curDerivationStep === 1;
+  if (nextBtn) nextBtn.disabled = curDerivationStep === derivationSteps.length;
+  if (indicator) indicator.textContent = `第 ${curDerivationStep} / ${derivationSteps.length} 步`;
+
+  box.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <span class="step-badge" style="background:var(--chalk-yellow); color:#fff8e8;">STEP ${stepData.step}</span>
+      <h3 class="chalk-yellow font-kalam" style="font-size:1.4rem; display:inline; margin-left:8px;">${stepData.title}</h3>
+      <p style="font-size:13.5px; color:var(--chalk-white-dim); margin-top:4px;">${stepData.subtitle}</p>
+    </div>
+    
+    <div style="background:rgba(112,86,53,0.055); padding:16px; border-radius:8px; border:1px dashed rgba(93,74,50,0.2); margin:16px 0;">
+      <div class="math-display" style="font-size:1.15rem;">${stepData.math}</div>
+    </div>
+
+    <div class="highlight-chalk" style="margin-top:14px;">
+      <p style="color:var(--chalk-white); font-size:14.5px;">${stepData.notes}</p>
+    </div>
+  `;
+
+  initMathRendering(box);
+}
+
+/* ================= 7. SIMULATOR A: AIRY ISOSTASY ================= */
+function initAirySimulator() {
+  const inpH = document.getElementById('input-h');
+  const inpRc = document.getElementById('input-rhoc');
+  const inpRm = document.getElementById('input-rhom');
+
+  if (!inpH || !inpRc || !inpRm) return;
+
+  [inpH, inpRc, inpRm].forEach(input => {
+    input.addEventListener('input', updateAirySim);
+  });
+
+  updateAirySim();
+}
+
+function updateAirySim() {
+  const inpH = document.getElementById('input-h');
+  const inpRc = document.getElementById('input-rhoc');
+  const inpRm = document.getElementById('input-rhom');
+
+  const valH = document.getElementById('val-h');
+  const valRc = document.getElementById('val-rhoc');
+  const valRm = document.getElementById('val-rhom');
+
+  const resRoot = document.getElementById('res-root');
+  const resRatio = document.getElementById('res-ratio');
+  const resTotal = document.getElementById('res-total');
+  const canvas = document.getElementById('airy-interactive-canvas');
+
+  if (!inpH || !canvas) return;
+
+  const h = parseFloat(inpH.value);
+  const rc = parseFloat(inpRc.value);
+  const rm = parseFloat(inpRm.value);
+
+  // Calculate Airy Root: r = [rc / (rm - rc)] * h
+  const deltaRho = Math.max(rm - rc, 100);
+  const ratio = rc / deltaRho;
+  const rootM = ratio * h;
+  const rootKm = rootM / 1000;
+  const totalCrustKm = 30 + rootKm;
+
+  valH.textContent = `${h.toLocaleString()} m (${(h / 1000).toFixed(2)} km)`;
+  valRc.textContent = `${rc} kg/m³`;
+  valRm.textContent = `${rm} kg/m³`;
+
+  resRoot.textContent = `${rootM.toFixed(0)} m (${rootKm.toFixed(2)} km)`;
+  resRatio.textContent = `${ratio.toFixed(2)} 倍`;
+  resTotal.textContent = `${totalCrustKm.toFixed(2)} km`;
+
+  // Draw Canvas
+  const ctx = canvas.getContext('2d');
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  ctx.clearRect(0, 0, cw, ch);
+
+  // Mantle background
+  ctx.fillStyle = '#f7efdf';
+  ctx.fillRect(0, 0, cw, ch);
+
+  const seaY = 110;
+  const normMohoY = 200; // Represents 30km
+  const kmScale = 2.0;   // pixels per km
+
+  // Sea level dashed
+  ctx.strokeStyle = 'rgba(93, 74, 50, 0.34)';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(10, seaY);
+  ctx.lineTo(cw - 10, seaY);
+  ctx.stroke();
+
+  // Mountain shape
+  const peakY = seaY - (h / 1000) * kmScale * 3.5;
+  const rootY = normMohoY + rootKm * kmScale;
+
+  // Crust block
+  ctx.fillStyle = '#eadcc1';
+  ctx.strokeStyle = '#5f7a4a';
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(30, seaY);
+  ctx.lineTo(150, seaY);
+  ctx.lineTo(250, peakY);
+  ctx.lineTo(350, seaY);
+  ctx.lineTo(470, seaY);
+  ctx.lineTo(470, normMohoY);
+  ctx.lineTo(370, normMohoY);
+  ctx.lineTo(250, rootY);
+  ctx.lineTo(130, normMohoY);
+  ctx.lineTo(30, normMohoY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Normal Moho Reference
+  ctx.strokeStyle = 'rgba(168, 93, 43, 0.35)';
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(30, normMohoY);
+  ctx.lineTo(cw - 30, normMohoY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle = '#4a3b2a';
+  ctx.font = 'bold 12px Kalam';
+  ctx.fillText('海平面 Sea-Level', 40, seaY - 8);
+
+  ctx.fillStyle = '#a8641f';
+  ctx.font = 'bold 13.5px Kalam';
+  ctx.fillText(`▲ 山高 h = ${(h / 1000).toFixed(2)} km`, 180, Math.max(peakY - 10, 20));
+
+  ctx.fillStyle = '#b4433a';
+  ctx.fillText(`▼ 補償山根 r = ${rootKm.toFixed(2)} km`, 180, Math.min(rootY + 22, ch - 15));
+
+  ctx.fillStyle = '#5f7a4a';
+  ctx.font = '12px Kalam';
+  ctx.fillText('正常地殼 (30 km)', 45, normMohoY - 10);
+  ctx.fillText('地函 (Mantle)', 45, normMohoY + 45);
+}
+
+/* ================= 8. SIMULATOR B: GRAVITY CALCULATOR ================= */
+function initGravityCalculator() {
+  const btn = document.getElementById('run-calc-btn');
+  if (!btn) return;
+
+  btn.addEventListener('click', runGravityCalculation);
+  runGravityCalculation();
+}
+
+function runGravityCalculation() {
+  const h = parseFloat(document.getElementById('calc-h').value) || 0;
+  const lat = parseFloat(document.getElementById('calc-lat').value) || 0;
+  const gm = parseFloat(document.getElementById('calc-gm').value) || 0;
+  const rho = parseFloat(document.getElementById('calc-rho').value) || 2.67;
+  const gt = parseFloat(document.getElementById('calc-gt').value) || 0;
+  const tide = parseFloat(document.getElementById('calc-tide').value) || 0;
+  const output = document.getElementById('calc-steps-display');
+
+  if (!output) return;
+
+  // 1. Theoretical Normal Gravity (WGS84 formula approx)
+  const rad = (lat * Math.PI) / 180;
+  const sinLat = Math.sin(rad);
+  const sin2Lat = Math.sin(2 * rad);
+  const gn = 978032.7 * (1 + 0.0053024 * (sinLat ** 2) - 0.0000058 * (sin2Lat ** 2));
+
+  // 2. Free-Air Correction: +0.3086 * h
+  const dgFA = 0.3086 * h;
+
+  // 3. Bouguer Plate Correction: 2 * pi * G * rho * h = 0.04193 * rho * h
+  const dgBP = 0.04193 * rho * h;
+
+  // 4. Free-Air Anomaly: gm + (dgFA + gt + tide) - gn
+  const deltaGF = gm + (dgFA + gt + tide) - gn;
+
+  // 5. Bouguer Anomaly: gm + (dgFA - dgBP + gt + tide) - gn
+  const deltaGB = gm + (dgFA - dgBP + gt + tide) - gn;
+
+  output.innerHTML = `
+    <h4 class="chalk-yellow font-kalam" style="font-size:1.3rem; margin-bottom:12px;">
+      📋 校正步驟詳細計算清單：
+    </h4>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div style="background:rgba(112,86,53,0.05); padding:10px 14px; border-radius:6px;">
+        <span class="chalk-cyan font-kalam">第 1 步：參考橢球面正常重力 gn(${lat}°)</span>
+        <div class="c-math">$$g_n = ${gn.toFixed(3)} \\text{ mgal}$$</div>
+      </div>
+
+      <div style="background:rgba(112,86,53,0.05); padding:10px 14px; border-radius:6px;">
+        <span class="chalk-cyan font-kalam">第 2 步：自由空間改正 (補回高度衰減)</span>
+        <div class="c-math">$$\\Delta g_{\\text{FA}} = +0.3086 \\times ${h} = +${dgFA.toFixed(3)} \\text{ mgal}$$</div>
+      </div>
+
+      <div style="background:rgba(112,86,53,0.05); padding:10px 14px; border-radius:6px;">
+        <span class="chalk-cyan font-kalam">第 3 步：布蓋平板改正 (扣除測站下方岩板引力)</span>
+        <div class="c-math">$$\\Delta g_{\\text{BP}} = 0.04193 \\times ${rho} \\times ${h} = ${dgBP.toFixed(3)} \\text{ mgal}$$</div>
+      </div>
+
+      <div style="background:rgba(63,108,125,0.07); border:1.5px solid var(--chalk-cyan); padding:12px 14px; border-radius:8px;">
+        <span class="chalk-cyan font-kalam" style="font-size:1.1rem;">★ 自由空間重力異常 (Free-Air Anomaly)：</span>
+        <div class="c-math">$$\\begin{aligned}
+        \\Delta g_F &= g_m + (\\Delta g_{\\text{FA}} + \\Delta g_T + \\Delta g_{\\text{tide}}) - g_n \\\\
+        &= ${gm} + (${dgFA.toFixed(2)} + ${gt} + ${tide}) - ${gn.toFixed(2)} \\\\
+        &= \\mathbf{${deltaGF >= 0 ? '+' : ''}${deltaGF.toFixed(2)}\\ \\text{mgal}}
+        \\end{aligned}$$</div>
+        <p style="font-size:13px; color:var(--chalk-white-dim); margin-top:4px;">
+          (保留測站下方岩石質量，反映地表超額負載)
+        </p>
+      </div>
+
+      <div style="background:rgba(244,220,139,0.2); border:1.5px solid var(--chalk-yellow); padding:12px 14px; border-radius:8px;">
+        <span class="chalk-yellow font-kalam" style="font-size:1.1rem;">★ 布蓋重力異常 (Bouguer Anomaly)：</span>
+        <div class="c-math">$$\\begin{aligned}
+        \\Delta g_B &= g_m + (\\Delta g_{\\text{FA}} - \\Delta g_{\\text{BP}} + \\Delta g_T + \\Delta g_{\\text{tide}}) - g_n \\\\
+        &= ${gm} + (${dgFA.toFixed(2)} - ${dgBP.toFixed(2)} + ${gt} + ${tide}) \\\\
+        &\\qquad - ${gn.toFixed(2)} \\\\
+        &= \\mathbf{${deltaGB >= 0 ? '+' : ''}${deltaGB.toFixed(2)}\\ \\text{mgal}}
+        \\end{aligned}$$</div>
+        <p style="font-size:13px; color:var(--chalk-white-dim); margin-top:4px;">
+          (已扣除基準面以上地形與岩板引力，直接反映地下深部岩層密度分佈)
+        </p>
+      </div>
+    </div>
+  `;
+
+  initMathRendering(output);
+}
+
+/* ================= 9. INTERACTIVE QUIZ ================= */
+const quizQuestions = [
+  {
+    q: '1. 關於 Airy 大地均衡模型與 Pratt 模型的比較，下列敘述何者正確？',
+    options: [
+      'A. Airy 模型假設地殼密度相同，以山根深淺變化來平衡地形',
+      'B. Pratt 模型假設山根深度隨山高增加而增厚',
+      'C. Airy 模型假設所有地殼柱在同一深度切齊，密度隨高度改變',
+      'D. 兩者皆認為地殼密度與厚度在各處均完全一致'
+    ],
+    ans: 0,
+    explain: '正確！Airy 假說核心為「同密度、不同厚度」，高山下方有低密度的深山根伸入地函；Pratt 模型則是「同深度、不同密度」。'
+  },
+  {
+    q: '2. 台灣中央山脈實測之自由空間重力異常高達 +100 ~ +300 mgal，其地球物理意義為何？',
+    options: [
+      'A. 顯示台灣已達到完全靜態大地均衡',
+      'B. 顯示深部存在極深且巨大的低密度山根，產生過度補償',
+      'C. 顯示高山地形缺乏足夠山根浮力支撐（補償不足），由板塊擠壓動態應力支撐',
+      'D. 顯示台灣下方地函完全處於融熔液態'
+    ],
+    ans: 2,
+    explain: '正確！若達大地均衡，高山區的自由空間異常應圍繞在 0 附近；呈現強烈正異常代表高山質量在深部缺乏足夠低密度山根抵消（補償不足 Undercompensated），是由板塊活動擠壓動態支撐。'
+  },
+  {
+    q: '3. 在重力野外校正中，為什麼「地形改正 (Terrain Correction, +ΔgT)」永遠是正值（需補加回觀測值）？',
+    options: [
+      'A. 因為儀器讀數會隨時間自然漂移增加',
+      'B. 高於測站的山丘向上吸引儀器、低於測站的谷地缺少質量向下引力，兩者皆使向下實測重力偏小',
+      'C. 為了抵消地球自轉引起的離心力',
+      'D. 為了消除月球引潮力的引力效應'
+    ],
+    ans: 1,
+    explain: '正確！手寫筆記強調：山峰產生向上引力拉小讀數、山谷缺少向下引力亦拉小讀數，兩者皆使實測值偏小，因此永遠加回（正號）！'
+  },
+  {
+    q: '4. 下列何者是「布蓋重力異常 (Bouguer Anomaly)」最主要的地球物理探勘用途？',
+    options: [
+      'A. 計算大地水準面起伏 (Geoid Undulation)',
+      'B. 測量衛星軌道高度衰減率',
+      'C. 消除地形遮蔽後，推求地下岩層密度分佈、追蹤斷層帶與莫氏面起伏',
+      'D. 直接測量海水表面潮汐週期'
+    ],
+    ans: 2,
+    explain: '正確！布蓋異常扣除了基準面以上岩板與地形質量的干擾，因此主要反映基準面以下側向密度差異，常用於推求深淺部地質構造與莫氏面深度。'
+  },
+  {
+    q: '5. 依據手寫筆記 p.28 圓柱座標微積分推導，無限水平岩石平板的引力公式為下列何者？',
+    options: [
+      'A. Δg = GM / R²',
+      'B. Δg_B = 2πGρh',
+      'C. Δg = 4/3 πGρr',
+      'D. Δg_FA = 0.3086 h'
+    ],
+    ans: 1,
+    explain: '正確！手寫筆記第 28 頁薄片積分到無限大極限求得 Δg_B = 2πGρh（其中 0.3086 h 是自由空間改正公式）。'
+  }
+];
+
+let userScore = 0;
+let answeredCount = 0;
+
+function initQuiz() {
+  const container = document.getElementById('quiz-container');
+  if (!container) return;
+
+  container.innerHTML = '';
+  userScore = 0;
+  answeredCount = 0;
+
+  const scoreCard = document.getElementById('quiz-score-card');
+  if (scoreCard) scoreCard.style.display = 'none';
+
+  quizQuestions.forEach((qData, qIdx) => {
+    const qDiv = document.createElement('div');
+    qDiv.className = 'quiz-item';
+    qDiv.innerHTML = `
+      <div class="quiz-q-title font-kalam">${qData.q}</div>
+      <div class="quiz-options">
+        ${qData.options.map((opt, optIdx) => `
+          <div class="q-opt" data-qid="${qIdx}" data-oid="${optIdx}">
+            ${opt}
+          </div>
+        `).join('')}
+      </div>
+      <div class="quiz-feedback" id="feedback-${qIdx}" style="display:none;"></div>
+    `;
+    container.appendChild(qDiv);
+  });
+
+  // Attach option clicks
+  container.querySelectorAll('.q-opt').forEach(optEl => {
+    optEl.addEventListener('click', () => {
+      const qid = parseInt(optEl.getAttribute('data-qid'), 10);
+      const oid = parseInt(optEl.getAttribute('data-oid'), 10);
+      handleQuizAnswer(qid, oid);
+    });
+  });
+
+  const retryBtn = document.getElementById('retry-quiz-btn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', initQuiz);
+  }
+}
+
+function handleQuizAnswer(qid, selectedOid) {
+  const qData = quizQuestions[qid];
+  const options = document.querySelectorAll(`.q-opt[data-qid="${qid}"]`);
+  const feedback = document.getElementById(`feedback-${qid}`);
+
+  // Disable further clicks on this question
+  options.forEach(opt => opt.classList.add('disabled'));
+
+  const isCorrect = selectedOid === qData.ans;
+  if (isCorrect) userScore++;
+  answeredCount++;
+
+  options.forEach((opt, idx) => {
+    if (idx === qData.ans) {
+      opt.classList.add('correct');
+    } else if (idx === selectedOid && !isCorrect) {
+      opt.classList.add('wrong');
+    }
+  });
+
+  if (feedback) {
+    feedback.style.display = 'block';
+    feedback.className = `quiz-feedback ${isCorrect ? 'feedback-correct' : 'feedback-wrong'}`;
+    feedback.innerHTML = `
+      <strong>${isCorrect ? '🎉 答對了！' : '❌ 答錯了！'}</strong> ${qData.explain}
+    `;
+  }
+
+  // If all answered, show summary
+  if (answeredCount === quizQuestions.length) {
+    showQuizScore();
+  }
+}
+
+function showQuizScore() {
+  const scoreCard = document.getElementById('quiz-score-card');
+  const scoreVal = document.getElementById('final-score');
+  const comment = document.getElementById('score-comment');
+
+  if (!scoreCard) return;
+
+  scoreCard.style.display = 'block';
+  scoreVal.textContent = userScore;
+
+  let msg = '';
+  if (userScore === 5) {
+    msg = '🏆 太強了！滿分 5/5！你已經完全掌握了重力探勘與大地均衡的物理核心！';
+  } else if (userScore >= 3) {
+    msg = '👍 表現優異！觀念大致清晰，再稍微複習一下台灣重力構造與平板積分推導就更完美囉！';
+  } else {
+    msg = '💡 加油！建議再回顧上方的大地均衡模型與重力校正步驟，加深物理直覺！';
+  }
+  comment.innerHTML = `<p class="font-kalam chalk-yellow" style="font-size:1.25rem;">${msg}</p>`;
+  scoreCard.scrollIntoView({ behavior: 'smooth' });
+}
+
+/* ================= 10. COPY GIT COMMANDS ================= */
+function initCopyButton() {
+  const copyBtn = document.querySelector('.copy-code-btn');
+  if (!copyBtn) return;
+
+  copyBtn.addEventListener('click', () => {
+    const code = document.getElementById('git-commands');
+    if (!code) return;
+
+    navigator.clipboard.writeText(code.innerText).then(() => {
+      const orig = copyBtn.innerHTML;
+      copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> 已複製！';
+      setTimeout(() => {
+        copyBtn.innerHTML = orig;
+      }, 2000);
+    });
+  });
+}
